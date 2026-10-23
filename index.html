@@ -1,0 +1,325 @@
+<!DOCTYPE html>
+<html lang="de">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Monster Energy Pausen-Tracker</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+
+<body>
+    <div class="app-shell">
+        <header class="hero-header">
+            <div class="hero-brand">
+                <div class="claw-badge" aria-hidden="true">⚡</div>
+                <div>
+                    <h1>Monster Energy Pausen-Tracker</h1>
+                    <p class="subtitle">Welche Sorten wir schon getestet haben, was als Nächstes ansteht & wie die Kollegen bewerten</p>
+                </div>
+            </div>
+            <div class="hero-actions">
+                <button class="btn btn-primary" id="openAddMonsterBtn" type="button">+ Neues Monster / Verwalten</button>
+                <button class="btn btn-secondary" id="openSyncModalBtn" type="button" title="GitHub Issues Sync & JSON Export">
+                    <span class="sync-dot" id="syncStatusDot"></span>
+                    <span id="syncStatusText">Team-Sync</span>
+                </button>
+            </div>
+        </header>
+
+        <!-- Schnell-Übersicht (KPIs) -->
+        <section class="summary-strip" aria-label="Kurzstatistiken">
+            <div class="summary-card">
+                <span class="summary-value" id="statTestedCount">0</span>
+                <span class="summary-label">Schon getestet</span>
+            </div>
+            <div class="summary-card">
+                <span class="summary-value" id="statUpcomingCount">0</span>
+                <span class="summary-label">Demnächst dran</span>
+            </div>
+            <div class="summary-card">
+                <span class="summary-value" id="statTotalRatings">0</span>
+                <span class="summary-label">Kollegen-Bewertungen</span>
+            </div>
+            <div class="summary-card">
+                <span class="summary-value" id="statTopMonster">-</span>
+                <span class="summary-label">Aktueller Pausen-Favorit</span>
+            </div>
+        </section>
+
+        <!-- Hauptnavigation -->
+        <nav class="main-tabs" aria-label="Hauptnavigation">
+            <button class="tab-btn active" data-view="tested" type="button">
+                ✅ Schon getestet <span class="tab-pill" id="pillTested">0</span>
+            </button>
+            <button class="tab-btn" data-view="upcoming" type="button">
+                ⏳ Demnächst <span class="tab-pill" id="pillUpcoming">0</span>
+            </button>
+            <button class="tab-btn" data-view="all" type="button">
+                📦 Alle Sorten <span class="tab-pill" id="pillAll">0</span>
+            </button>
+            <button class="tab-btn" data-view="ranking" type="button">
+                🏆 Bestenliste & Kollegen
+            </button>
+        </nav>
+
+        <!-- Ansicht: Karten-Grid (Getestet / Demnächst / Alle) -->
+        <main id="catalogView" class="view-section active">
+            <div class="toolbar">
+                <div class="search-box">
+                    <input type="search" id="searchInput" placeholder="Monster, Geschmack (z.B. Pfirsich, Mango, Zero) suchen...">
+                </div>
+                <div class="filter-group">
+                    <select id="categoryFilter" aria-label="Kategorie filtern">
+                        <option value="">Alle Kategorien</option>
+                    </select>
+                    <select id="sugarFilter" aria-label="Zuckergehalt filtern">
+                        <option value="">Mit & Ohne Zucker</option>
+                        <option value="zero">Nur Zero Sugar (0g)</option>
+                        <option value="sugar">Mit Zucker (>0g)</option>
+                    </select>
+                    <select id="sortSelect" aria-label="Sortierung">
+                        <option value="rating-desc">Beste Bewertung zuerst</option>
+                        <option value="reviews-desc">Meiste Bewertungen</option>
+                        <option value="name-asc">Name (A–Z)</option>
+                        <option value="sugar-asc">Wenig Zucker zuerst</option>
+                        <option value="caffeine-desc">Meistes Koffein zuerst</option>
+                    </select>
+                </div>
+            </div>
+
+            <div id="sectionBanner" class="section-banner"></div>
+            <div id="monstersGrid" class="monsters-grid"></div>
+        </main>
+
+        <!-- Ansicht: Bestenliste & Kollegen-Übersicht -->
+        <section id="rankingView" class="view-section">
+            <div class="ranking-header-bar">
+                <div>
+                    <h2>🏆 Pausen-Bestenliste (1–10 Punkte)</h2>
+                    <p class="muted">Basierend auf allen abgegebenen Kollegen-Bewertungen</p>
+                </div>
+                <div class="filter-group">
+                    <label for="reviewerFilter" class="inline-label">Nach Kollege filtern:</label>
+                    <select id="reviewerFilter">
+                        <option value="">Alle Kollegen (Gesamtdurchschnitt)</option>
+                    </select>
+                </div>
+            </div>
+
+            <div id="podiumContainer" class="podium-grid"></div>
+            <div id="rankingTableContainer" class="ranking-list"></div>
+        </section>
+    </div>
+
+    <!-- Modal 1: Monster-Details, Kollegen-Bewertungen & eigene Bewertung abgeben -->
+    <div id="monsterModal" class="modal-backdrop hidden" role="dialog" aria-modal="true" aria-labelledby="modalMonsterTitle">
+        <div class="modal-card modal-large">
+            <button class="modal-close" id="closeMonsterModalBtn" type="button" aria-label="Schließen">✕</button>
+
+            <div class="modal-monster-layout">
+                <!-- Linke Spalte: Bild, Status & Nährwerte -->
+                <div class="modal-monster-sidebar">
+                    <div class="modal-can-wrap">
+                        <img id="modalMonsterImg" src="" alt="">
+                    </div>
+                    <div class="modal-badges">
+                        <span id="modalStatusBadge" class="status-badge"></span>
+                        <span id="modalCategoryBadge" class="category-badge"></span>
+                    </div>
+                    <h2 id="modalMonsterTitle">Monster Name</h2>
+                    <p id="modalMonsterTaste" class="taste-text"></p>
+
+                    <div class="nutrition-box">
+                        <div class="nutrition-item">
+                            <span class="nutri-label">Zucker (500ml)</span>
+                            <strong id="modalMonsterSugar">0g</strong>
+                        </div>
+                        <div class="nutrition-item">
+                            <span class="nutri-label">Koffein (500ml)</span>
+                            <strong id="modalMonsterCaffeine">160mg</strong>
+                        </div>
+                    </div>
+
+                    <div class="status-toggle-box">
+                        <label for="modalStatusSelect">Status für die Pause:</label>
+                        <div class="status-toggle-row">
+                            <select id="modalStatusSelect">
+                                <option value="tested">✅ Schon getestet</option>
+                                <option value="upcoming">⏳ Demnächst dran</option>
+                            </select>
+                            <button class="btn btn-small" id="saveStatusChangeBtn" type="button">Status ändern</button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Rechte Spalte: Bewertungen der Kollegen + Neue Bewertung abgeben -->
+                <div class="modal-monster-content">
+                    <div class="avg-score-banner">
+                        <div>
+                            <span class="avg-score-label">Durchschnittsbewertung</span>
+                            <div class="avg-score-big" id="modalAvgScore">– / 10</div>
+                        </div>
+                        <div class="avg-score-meta" id="modalReviewCount">Noch keine Bewertungen</div>
+                    </div>
+
+                    <!-- Liste aller Kollegen-Bewertungen -->
+                    <div class="reviews-section">
+                        <h3>💬 Bewertungen der Kollegen</h3>
+                        <div id="modalReviewsList" class="reviews-list"></div>
+                    </div>
+
+                    <!-- Formular: Eigene Bewertung abgeben -->
+                    <form id="ratingForm" class="rating-form-box">
+                        <h3>⭐ Deine Bewertung abgeben (1–10)</h3>
+                        <div class="form-row-two">
+                            <div class="form-field">
+                                <label for="reviewerNameInput">Dein Name / Kürzel *</label>
+                                <input type="text" id="reviewerNameInput" placeholder="z.B. Max, Lukas, Sarah..." required>
+                            </div>
+                            <div class="form-field">
+                                <label>Deine Punkte (1 = untrinkbar, 10 = legendär) *</label>
+                                <div class="score-selector" id="scoreSelector">
+                                    <button type="button" class="score-btn" data-score="1">1</button>
+                                    <button type="button" class="score-btn" data-score="2">2</button>
+                                    <button type="button" class="score-btn" data-score="3">3</button>
+                                    <button type="button" class="score-btn" data-score="4">4</button>
+                                    <button type="button" class="score-btn" data-score="5">5</button>
+                                    <button type="button" class="score-btn" data-score="6">6</button>
+                                    <button type="button" class="score-btn" data-score="7">7</button>
+                                    <button type="button" class="score-btn" data-score="8">8</button>
+                                    <button type="button" class="score-btn" data-score="9">9</button>
+                                    <button type="button" class="score-btn" data-score="10">10</button>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="form-field">
+                            <label for="reviewCommentInput">Kommentar / Geschmacksnotiz (optional)</label>
+                            <textarea id="reviewCommentInput" rows="2" placeholder="Wie hat es geschmeckt? Würdest du es wieder kaufen?"></textarea>
+                        </div>
+
+                        <div class="rating-submit-actions">
+                            <button type="submit" class="btn btn-primary">Bewertung speichern</button>
+                            <button type="button" class="btn btn-github" id="submitRatingViaGithubBtn" title="Öffnet ein vorausgefülltes GitHub Issue, damit alle Kollegen die Bewertung sofort auf GitHub Pages sehen">
+                                🚀 Auf GitHub für alle teilen
+                            </button>
+                        </div>
+                        <p class="form-hint" id="ratingFormHint">
+                            Tipp: „Bewertung speichern“ merkt sie sofort hier im Browser. Mit „Auf GitHub für alle teilen“ (oder über den JSON-Export) sehen sie alle Kollegen auf GitHub Pages.
+                        </p>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal 2: Neues Monster hinzufügen -->
+    <div id="addMonsterModal" class="modal-backdrop hidden" role="dialog" aria-modal="true" aria-labelledby="addMonsterModalTitle">
+        <div class="modal-card">
+            <button class="modal-close" id="closeAddMonsterModalBtn" type="button" aria-label="Schließen">✕</button>
+            <h2 id="addMonsterModalTitle">➕ Neues Monster hinzufügen</h2>
+            <p class="muted">Füge ganz einfach eine neue Sorte für die nächste Pause oder als bereits getestet hinzu.</p>
+
+            <form id="addMonsterForm" class="stack-form">
+                <div class="form-row-two">
+                    <div class="form-field">
+                        <label for="newMonsterName">Name der Sorte *</label>
+                        <input type="text" id="newMonsterName" placeholder="z.B. Monster Ultra Violet" required>
+                    </div>
+                    <div class="form-field">
+                        <label for="newMonsterStatus">Status *</label>
+                        <select id="newMonsterStatus">
+                            <option value="upcoming">⏳ Demnächst (Geplant für die Pause)</option>
+                            <option value="tested">✅ Schon getestet</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div class="form-row-two">
+                    <div class="form-field">
+                        <label for="newMonsterCategory">Kategorie</label>
+                        <select id="newMonsterCategory">
+                            <option value="Ultra (Zero Sugar)">Ultra (Zero Sugar)</option>
+                            <option value="Juiced">Juiced</option>
+                            <option value="Punch">Punch</option>
+                            <option value="Original">Original</option>
+                            <option value="Rehab (Ohne Kohlensäure)">Rehab (Ohne Kohlensäure)</option>
+                            <option value="Nitro">Nitro</option>
+                            <option value="Special Edition">Special Edition</option>
+                        </select>
+                    </div>
+                    <div class="form-field">
+                        <label for="newMonsterImage">Bild-Datei (aus <code>res/</code>) oder Bild-URL</label>
+                        <input type="text" id="newMonsterImage" list="existingImagesList" placeholder="z.B. res/MeinMonster.webp oder https://...">
+                        <datalist id="existingImagesList"></datalist>
+                    </div>
+                </div>
+
+                <div class="form-row-three">
+                    <div class="form-field">
+                        <label for="newMonsterSugar">Zucker (g / 500ml)</label>
+                        <input type="number" id="newMonsterSugar" step="0.1" min="0" value="0">
+                    </div>
+                    <div class="form-field">
+                        <label for="newMonsterCaffeine">Koffein (mg / 500ml)</label>
+                        <input type="number" id="newMonsterCaffeine" step="1" min="0" value="160">
+                    </div>
+                    <div class="form-field">
+                        <label for="newMonsterTaste">Geschmacksrichtung</label>
+                        <input type="text" id="newMonsterTaste" placeholder="z.B. Traube, Zitrus, süß">
+                    </div>
+                </div>
+
+                <div class="rating-submit-actions">
+                    <button type="submit" class="btn btn-primary">Monster hinzufügen</button>
+                    <button type="button" class="btn btn-github" id="submitNewMonsterGithubBtn">
+                        🚀 Per GitHub Issue ins Repo eintragen
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Modal 3: Team-Sync (GitHub Issues API + monsters.json Export) -->
+    <div id="syncModal" class="modal-backdrop hidden" role="dialog" aria-modal="true" aria-labelledby="syncModalTitle">
+        <div class="modal-card">
+            <button class="modal-close" id="closeSyncModalBtn" type="button" aria-label="Schließen">✕</button>
+            <h2 id="syncModalTitle">🔄 Team-Sync & GitHub Pages Datenverwaltung</h2>
+            <p class="muted">
+                Diese Seite läuft komplett statisch auf GitHub Pages. Bewertungen werden aus <code>data/monsters.json</code> UND live aus den GitHub Issues eures Repositories geladen.
+            </p>
+
+            <div class="sync-section">
+                <h3>1. GitHub Repository für Live-Bewertungen</h3>
+                <p class="small-text">
+                    Auf <code>*.github.io</code> wird das Repository automatisch erkannt. Für lokale Tests kannst du es hier eintragen (Format: <code>dein-user/MonsterList</code>):
+                </p>
+                <div class="repo-input-row">
+                    <input type="text" id="githubRepoInput" placeholder="z.B. pfundmax/MonsterList">
+                    <button class="btn btn-primary" id="saveRepoConfigBtn" type="button">Verbinden & Neu laden</button>
+                </div>
+                <p id="repoSyncFeedback" class="small-text highlight-text"></p>
+            </div>
+
+            <div class="sync-section">
+                <h3>2. Aktualisierte <code>data/monsters.json</code> herunterladen / kopieren</h3>
+                <p class="small-text">
+                    Alle lokal hinzugefügten Monster, Status-Änderungen und Bewertungen sind im untenstehenden JSON enthalten. Du kannst die Datei herunterladen und in den Ordner <code>data/monsters.json</code> legen (oder committen):
+                </p>
+                <div class="export-actions">
+                    <button class="btn btn-primary" id="downloadJsonBtn" type="button">💾 monsters.json herunterladen</button>
+                    <button class="btn btn-secondary" id="copyJsonBtn" type="button">📋 JSON in Zwischenablage kopieren</button>
+                    <button class="btn btn-danger" id="resetLocalChangesBtn" type="button">Lokale Entwürfe zurücksetzen</button>
+                </div>
+                <textarea id="jsonExportPreview" class="json-preview" rows="8" readonly></textarea>
+            </div>
+        </div>
+    </div>
+
+    <div id="toastNotification" class="toast hidden" role="status" aria-live="polite"></div>
+
+    <script src="app.js"></script>
+</body>
+
+</html>
