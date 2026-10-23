@@ -6,7 +6,31 @@ Eine schnelle Web-App auf **GitHub Pages** mit einer kostenlosen **Cloudflare D1
 
 ---
 
-## ☁️ Cloudflare D1 Datenbank einrichten (Komplett kostenlos, dauert ~3 Minuten)
+## 🔐 Automatisch deployen mit GitHub Secrets (empfohlen)
+
+Der Workflow [`.github/workflows/deploy-cloudflare.yml`](./.github/workflows/deploy-cloudflare.yml) legt D1 an, spielt `schema.sql` ein, deployt den Worker und trägt die Worker-URL automatisch in `data/monsters.json` ein. Der Token liegt dabei nur verschlüsselt in GitHub.
+
+1. **Cloudflare API-Token erstellen:** [dash.cloudflare.com/profile/api-tokens](https://dash.cloudflare.com/profile/api-tokens) → *Create Token* → *Custom Token* mit
+   - `Account` → `D1` → `Edit`
+   - `Account` → `Workers Scripts` → `Edit`
+2. **workers.dev-Subdomain festlegen** (nur bei neuem Account): einmal im Dashboard **Workers & Pages** öffnen und die Subdomain bestätigen.
+3. **Secrets in GitHub anlegen:** Repo → **Settings → Secrets and variables → Actions → New repository secret**
+   - `CLOUDFLARE_API_TOKEN` = der Token aus Schritt 1
+   - `CLOUDFLARE_ACCOUNT_ID` = deine Account-ID (Dashboard → Workers & Pages, rechte Seitenleiste)
+
+   Alternativ per GitHub CLI:
+   ```powershell
+   gh secret set CLOUDFLARE_API_TOKEN
+   gh secret set CLOUDFLARE_ACCOUNT_ID
+   ```
+4. **Workflow starten:** Repo → **Actions → Deploy Cloudflare D1 + Worker → Run workflow**.
+   Danach läuft er automatisch bei jeder Änderung an `cloudflare/worker.js` oder `cloudflare/schema.sql`.
+
+> Terraform ([`cloudflare/terraform/`](./cloudflare/terraform)) ist für lokale Deployments gedacht. In GitHub Actions wird bewusst `wrangler` genutzt, weil Terraform dort einen Remote-State bräuchte – sonst würde jeder Lauf versuchen, die Datenbank neu anzulegen.
+
+---
+
+## ☁️ Cloudflare D1 Datenbank manuell einrichten (Alternative)
 
 Da du bereits einen Cloudflare-Account hast, kannst du alles direkt im Browser im **Cloudflare Dashboard** (ohne Kommandozeile) einrichten:
 

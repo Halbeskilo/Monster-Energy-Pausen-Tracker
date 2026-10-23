@@ -7,3 +7,7 @@ workers_dev_subdomain = "dein-workers-subdomain"
 
 d1_database_name = "monster-db"
 worker_name      = "monster-pausen-api"
+
+# Optional: zusätzlich einen Deploy-Token für GitHub Actions anlegen
+# (cloudflare_api_token braucht dafür das Recht "Account API Tokens Write")
+create_deploy_token = false

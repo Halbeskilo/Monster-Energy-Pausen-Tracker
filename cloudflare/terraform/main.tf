@@ -4,7 +4,7 @@ terraform {
   required_providers {
     cloudflare = {
       source  = "cloudflare/cloudflare"
-      version = "~> 4.40"
+      version = "~> 5.28"
     }
     null = {
       source  = "hashicorp/null"
@@ -17,32 +17,35 @@ provider "cloudflare" {
   api_token = var.cloudflare_api_token
 }
 
-# 1. Kostenlose Cloudflare D1 SQL-Datenbank erstellen
+# 1. D1-Datenbank
 resource "cloudflare_d1_database" "monster_db" {
   account_id = var.cloudflare_account_id
   name       = var.d1_database_name
 }
 
-# 2. Cloudflare Worker Script inkl. D1 Datenbank-Binding ("DB") deployen
+# 2. Worker mit D1-Binding "DB"
 resource "cloudflare_workers_script" "monster_api" {
   account_id         = var.cloudflare_account_id
-  name               = var.worker_name
+  script_name        = var.worker_name
   content            = file("${path.module}/../worker.js")
-  module             = true
+  main_module        = "worker.js"
   compatibility_date = "2024-10-01"
 
-  d1_database_binding {
-    name        = "DB"
-    database_id = cloudflare_d1_database.monster_db.id
-  }
+  bindings = [{
+    type = "d1"
+    name = "DB"
+    id   = cloudflare_d1_database.monster_db.id
+  }]
 }
 
-# 3. Öffentliche *.workers.dev Subdomain für den Worker aktivieren
-resource "cloudflare_workers_domain" "note" {
-  count = 0
+# 3. Worker unter *.workers.dev erreichbar machen
+resource "cloudflare_workers_script_subdomain" "monster_api" {
+  account_id  = var.cloudflare_account_id
+  script_name = cloudflare_workers_script.monster_api.script_name
+  enabled     = true
 }
 
-# 4. SQL-Schema (Tabellen + 31 Monster) nach dem Erstellen der D1-Datenbank einspielen
+# 4. Tabellen + 31 Monster einspielen (schema.sql ist idempotent)
 resource "null_resource" "seed_d1_schema" {
   depends_on = [cloudflare_d1_database.monster_db]
 

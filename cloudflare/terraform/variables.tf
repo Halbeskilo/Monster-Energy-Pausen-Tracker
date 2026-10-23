@@ -26,3 +26,9 @@ variable "workers_dev_subdomain" {
   type        = string
   default     = "DEIN-SUBDOMAIN-NAME"
 }
+
+variable "create_deploy_token" {
+  description = "Legt zusätzlich einen API-Token für GitHub Actions an (benötigt 'Account API Tokens Write')"
+  type        = bool
+  default     = false
+}

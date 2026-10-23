@@ -5,10 +5,16 @@ output "d1_database_id" {
 
 output "worker_name" {
   description = "Name des deployten Cloudflare Workers"
-  value       = cloudflare_workers_script.monster_api.name
+  value       = cloudflare_workers_script.monster_api.script_name
 }
 
 output "worker_api_url" {
   description = "Deine fertige API-URL für data/monsters.json (apiUrl)"
-  value       = "https://${cloudflare_workers_script.monster_api.name}.${var.workers_dev_subdomain}.workers.dev"
+  value       = "https://${cloudflare_workers_script.monster_api.script_name}.${var.workers_dev_subdomain}.workers.dev"
+}
+
+output "deploy_token" {
+  description = "Token für das GitHub-Secret CLOUDFLARE_API_TOKEN (nur mit create_deploy_token = true)"
+  value       = try(cloudflare_account_token.deploy[0].value, null)
+  sensitive   = true
 }

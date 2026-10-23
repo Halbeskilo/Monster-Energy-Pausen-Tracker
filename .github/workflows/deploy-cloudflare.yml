@@ -1,0 +1,119 @@
+name: Deploy Cloudflare D1 + Worker
+
+# Benötigte Repository-Secrets (Settings -> Secrets and variables -> Actions):
+#   CLOUDFLARE_API_TOKEN   (Rechte: Account / D1 / Edit + Account / Workers Scripts / Edit)
+#   CLOUDFLARE_ACCOUNT_ID
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'cloudflare/worker.js'
+      - 'cloudflare/schema.sql'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: cloudflare-deploy
+  cancel-in-progress: false
+
+env:
+  CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+  CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+  DB_NAME: monster-db
+  WORKER_NAME: monster-pausen-api
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: cloudflare
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Secrets prüfen
+        run: |
+          if [ -z "$CLOUDFLARE_API_TOKEN" ] || [ -z "$CLOUDFLARE_ACCOUNT_ID" ]; then
+            echo "::error::Secrets CLOUDFLARE_API_TOKEN und/oder CLOUDFLARE_ACCOUNT_ID fehlen (Settings -> Secrets and variables -> Actions)."
+            exit 1
+          fi
+
+      - name: Wrangler installieren
+        run: npm install -g wrangler@4
+
+      - name: D1-Datenbank anlegen (falls nicht vorhanden)
+        id: d1
+        run: |
+          get_id() {
+            wrangler d1 list --json | sed -n '/^\[/,$p' | jq -r --arg n "$DB_NAME" '.[] | select(.name==$n) | .uuid'
+          }
+          DB_ID=$(get_id)
+          if [ -z "$DB_ID" ]; then
+            wrangler d1 create "$DB_NAME"
+            DB_ID=$(get_id)
+          fi
+          if [ -z "$DB_ID" ]; then
+            echo "::error::D1-Datenbank-ID konnte nicht ermittelt werden."
+            exit 1
+          fi
+          echo "id=$DB_ID" >> "$GITHUB_OUTPUT"
+
+      - name: wrangler.toml mit D1-Binding schreiben
+        run: |
+          cat > wrangler.toml <<EOF
+          name = "${WORKER_NAME}"
+          main = "worker.js"
+          compatibility_date = "2024-10-01"
+          workers_dev = true
+
+          [[d1_databases]]
+          binding = "DB"
+          database_name = "${DB_NAME}"
+          database_id = "${{ steps.d1.outputs.id }}"
+          EOF
+
+      - name: Schema + Monster einspielen (idempotent)
+        run: wrangler d1 execute "$DB_NAME" --remote --file=schema.sql
+
+      - name: Worker deployen
+        id: deploy
+        run: |
+          OUT=$(wrangler deploy 2>&1)
+          echo "$OUT"
+          URL=$(echo "$OUT" | grep -oE 'https://[a-zA-Z0-9.-]+\.workers\.dev' | head -n1)
+          if [ -z "$URL" ]; then
+            echo "::error::Keine workers.dev-URL gefunden. Hast du im Cloudflare-Dashboard unter 'Workers & Pages' einmal deine workers.dev-Subdomain festgelegt?"
+            exit 1
+          fi
+          echo "url=$URL" >> "$GITHUB_OUTPUT"
+
+      - name: API testen
+        run: |
+          COUNT=$(curl -sf "${{ steps.deploy.outputs.url }}/api/data" | jq '.monsters | length')
+          echo "Monster in D1: $COUNT"
+          [ "$COUNT" -gt 0 ]
+
+      - name: apiUrl in data/monsters.json eintragen & pushen
+        working-directory: .
+        env:
+          API_URL: ${{ steps.deploy.outputs.url }}
+        run: |
+          jq --arg u "$API_URL" '.meta.apiUrl = $u' data/monsters.json > monsters.tmp
+          mv monsters.tmp data/monsters.json
+          git add data/monsters.json
+          if git diff --cached --quiet; then
+            echo "apiUrl ist bereits aktuell."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git commit -m "chore: set Cloudflare Worker apiUrl"
+          git push
