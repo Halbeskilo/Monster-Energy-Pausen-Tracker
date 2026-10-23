@@ -13,7 +13,7 @@ let appState = {
     d1Connected: false,
     currentView: 'tested',
     activeMonsterId: null,
-    selectedScore: 8
+    selectedScore: null
 };
 
 // Hilfsfunktionen für LocalStorage
@@ -561,19 +561,25 @@ function openMonsterModal(monsterId) {
         });
     }
 
-    // Gespeicherten Kollegen-Namen vorausfüllen
+    // Gespeicherten Kollegen-Namen vorausfüllen, Punkte & Kommentar zurücksetzen
+    // (bzw. mit der eigenen bisherigen Bewertung dieses Monsters füllen)
     const savedName = localStorage.getItem(STORAGE_KEYS.REVIEWER_NAME) || '';
     const nameInput = document.getElementById('reviewerNameInput');
     if (!nameInput.value && savedName) {
         nameInput.value = savedName;
     }
+    const currentName = nameInput.value.trim().toLowerCase();
+    const ownRating = currentName
+        ? monster.ratings.find(r => (r.user || '').trim().toLowerCase() === currentName)
+        : null;
+    document.getElementById('reviewCommentInput').value = ownRating ? (ownRating.comment || '') : '';
+    setScoreButtons(ownRating ? ownRating.score : null);
 
-    setScoreButtons(appState.selectedScore);
     document.getElementById('monsterModal').classList.remove('hidden');
 }
 
 function setScoreButtons(score) {
-    appState.selectedScore = Number(score);
+    appState.selectedScore = score === null || score === undefined ? null : Number(score);
     document.querySelectorAll('#scoreSelector .score-btn').forEach(btn => {
         btn.classList.toggle('active', Number(btn.dataset.score) === appState.selectedScore);
     });
@@ -588,6 +594,10 @@ function readRatingFormPayload() {
 
     if (!monsterId || !user) {
         showToast('Bitte gib deinen Namen ein!');
+        return null;
+    }
+    if (!score) {
+        showToast('Bitte wähle eine Punktzahl (1–10)!');
         return null;
     }
 
