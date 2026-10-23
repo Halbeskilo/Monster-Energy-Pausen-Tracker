@@ -1,0 +1,10 @@
+name = "monster-pausen-api"
+main = "worker.js"
+compatibility_date = "2024-10-01"
+
+# Sobald du deine D1-Datenbank erstellt hast, kannst du hier optional die database_id eintragen
+# (oder die Verknüpfung einfach per Klick im Cloudflare Dashboard unter Settings -> Bindings machen):
+# [[d1_databases]]
+# binding = "DB"
+# database_name = "monster-db"
+# database_id = "HIER-DEINE-D1-DATABASE-ID-EINTRAGEN"

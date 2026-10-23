@@ -1,66 +1,42 @@
-# ⚡ Monster Energy Pausen-Tracker (`MonsterList`)
+# ⚡ Monster Energy Pausen-Tracker (`Monster-Energy-Pausen-Tracker`)
 
-Eine schnelle, statische Web-App für **GitHub Pages**, um mit Kollegen in der Pause getestete und geplante **Monster Energy** Sorten zu verwalten, mit Bildern & Nährwerten anzuschauen und gegenseitig auf einer Skala von **1–10** zu bewerten.
+Eine schnelle Web-App auf **GitHub Pages** mit einer kostenlosen **Cloudflare D1 SQL-Datenbank**, um mit Kollegen in der Pause getestete und geplante **Monster Energy** Sorten zu verwalten, mit Bildern & Nährwerten anzuschauen und gegenseitig auf einer Skala von **1–10** zu bewerten.
 
----
-
-## ✨ Features
-
-- **✅ Schon getestet & ⏳ Demnächst dran:** Übersichtliche Trennung zwischen bereits verkosteten Dosen und Sorten, die für die nächsten Pausen geplant sind.
-- **🖼️ 31 Monster-Sorten & Bilder vorinstalliert:** Alle Bilder liegen im Ordner `res/`, alle Daten in `data/monsters.json` (inkl. Koffein, Zuckergehalt & Geschmacksbeschreibung).
-- **⭐ Bewerten (1–10 Punkte) & Kommentare der Kollegen lesen:**
-  - Klick auf ein Monster zeigt den Gesamtdurchschnitt sowie alle Einzelbewertungen und Geschmacksnotizen der Kollegen.
-  - Eigene Bewertung direkt mit Name, Punktzahl (1–10) und Kommentar abgeben.
-- **🏆 Bestenliste (Ranking):** Podium (Top 3) und Gesamtrangliste aller getesteten Monster – auch nach einzelnen Kollegen filterbar.
-- **➕ Einfaches Hinzufügen neuer Monster:**
-  - Direkt über den Button **„+ Neues Monster / Verwalten“** auf der Webseite oder durch Ergänzen eines Eintrags in `data/monsters.json`.
+👉 **Live-Seite:** `https://halbeskilo.github.io/Monster-Energy-Pausen-Tracker/`
 
 ---
 
-## 🚀 Auf GitHub Pages hosten (In 2 Minuten)
+## ☁️ Cloudflare D1 Datenbank einrichten (Komplett kostenlos, dauert ~3 Minuten)
 
-1. Erstelle auf GitHub ein neues **Public Repository** (z. B. `MonsterList`).
-2. Verbinde dieses lokale Repository und pushe den Code:
-   ```bash
-   git remote add origin https://github.com/<DEIN-GITHUB-NAME>/MonsterList.git
-   git push -u origin main
-   ```
-3. Öffne auf GitHub **Settings → Pages**:
-   - Unter **Build and deployment** wähle **Deploy from a branch**.
-   - Wähle Branch `main` und Ordner `/ (root)` → **Save**.
-4. Deine Seite ist kurz darauf unter `https://<DEIN-GITHUB-NAME>.github.io/MonsterList/` erreichbar!
+Da du bereits einen Cloudflare-Account hast, kannst du alles direkt im Browser im **Cloudflare Dashboard** (ohne Kommandozeile) einrichten:
 
----
+### Schritt 1: D1-Datenbank erstellen & Tabellen anlegen
+1. Logge dich auf [dash.cloudflare.com](https://dash.cloudflare.com/) ein.
+2. Klicke links im Menü auf **Workers & Pages** → **D1 SQL Database** (oder **Storage & Databases → D1**).
+3. Klicke auf **Create Database**, nenne sie **`monster-db`** und klicke auf **Create**.
+4. Öffne deine neue Datenbank `monster-db`, wechsle auf den Reiter **Console** (SQL-Konsole).
+5. Kopiere den gesamten Inhalt aus der Datei [`cloudflare/schema.sql`](./cloudflare/schema.sql) in das SQL-Feld und klicke auf **Execute**.
+   *(Damit sind die Tabellen `monsters` und `ratings` sowie alle 31 Monster-Sorten sofort in deiner Datenbank angelegt!)*
 
-## 🤝 Wie funktionieren die gemeinsamen Bewertungen auf GitHub Pages?
+### Schritt 2: Kostenlosen Cloudflare Worker als API erstellen
+1. Gehe links im Cloudflare-Menü auf **Workers & Pages** → **Create** → **Create Worker**.
+2. Vergib einen Namen, z. B. **`monster-pausen-api`**, und klicke auf **Deploy**.
+3. Klicke danach auf **Edit code** (oben rechts):
+   - Lösche den Beispiel-Code im Editor komplett.
+   - Kopiere den gesamten Inhalt aus [`cloudflare/worker.js`](./cloudflare/worker.js) hinein.
+   - Klicke oben rechts auf **Deploy**.
 
-Da GitHub Pages rein statisch ist, kombiniert die App zwei Wege:
+### Schritt 3: Datenbank (`monster-db`) mit dem Worker verbinden
+1. Gehe in deinem Worker `monster-pausen-api` auf den Tab **Settings** → **Bindings** (oder **Variables and Secrets / Bindings**).
+2. Klicke auf **+ Add** → wähle **D1 database**.
+3. Trage exakt ein:
+   - **Variable name:** `DB` *(Wichtig: großgeschrieben `DB`)*
+   - **D1 database:** Wähle deine `monster-db` aus.
+4. Klicke auf **Deploy / Save**.
 
-1. **Über GitHub Issues + Auto-Sync (Empfohlen auf GitHub Pages):**
-   - Klickt ein Kollege im Bewertungsformular auf **„🚀 Auf GitHub für alle teilen“**, öffnet sich ein fertig ausgefülltes GitHub-Issue.
-   - **Sofort sichtbar:** Die Webseite liest offene Issues live über die GitHub API aus – die Bewertung ist sofort für alle sichtbar.
-   - **Automatisch in `data/monsters.json` gespeichert:** Die mitgelieferte GitHub Action (`.github/workflows/sync-issues-to-json.yml`) trägt die Bewertung automatisch fest in `data/monsters.json` ein und schließt das Issue wieder.
-2. **Ohne GitHub-Account (Direkt über `data/monsters.json`):**
-   - Du kannst Bewertungen und neue Monster auf der Seite eingeben und unter **„Team-Sync → 💾 monsters.json herunterladen“** die fertige Datei herunterladen und ins Repo committen.
-   - Oder du bearbeitest `data/monsters.json` direkt im Texteditor:
+### Schritt 4: Worker-URL in der App hinterlegen
+Dein Worker hat jetzt eine eigene URL (steht oben in der Worker-Übersicht, z. B. `https://monster-pausen-api.<dein-subdomain>.workers.dev`).
 
-```json
-{
-  "id": 32,
-  "name": "Monster Ultra Violet",
-  "category": "Ultra (Zero Sugar)",
-  "status": "upcoming",
-  "image": "res/MeinNeuesBild.webp",
-  "caffeine": 150,
-  "sugar": 0,
-  "taste": "Traube, Zitrus, zuckerfrei",
-  "ratings": [
-    {
-      "user": "Max",
-      "score": 9,
-      "comment": "Mega erfrischend in der Pause!",
-      "date": "2026-10-23"
-    }
-  ]
-}
-```
+- **Zum sofortigen Testen:** Klicke auf deiner Webseite oben rechts auf **„D1 verbinden“**, füge die URL ein und klicke auf **Verbinden & Testen**.
+- **Damit kein Kollege etwas eingeben muss:** Trage die URL einmal fest in [`data/monsters.json`](./data/monsters.json) in Zeile 5 bei `"apiUrl": "https://monster-pausen-api....workers.dev"` ein und pushe die Änderung zu GitHub!
+

@@ -1,18 +1,17 @@
-// Monster Energy Pausen-Tracker (Statisches JSON + GitHub Issues API + LocalStorage)
+// Monster Energy Pausen-Tracker (Cloudflare D1 Datenbank + JSON/LocalStorage Fallback)
 
 const STORAGE_KEYS = {
     LOCAL_RATINGS: 'monsterList_localRatings_v1',
     LOCAL_MONSTERS: 'monsterList_localMonsters_v1',
     LOCAL_STATUS: 'monsterList_localStatus_v1',
     REVIEWER_NAME: 'monsterList_reviewerName_v1',
-    GITHUB_REPO: 'monsterList_githubRepo_v1'
+    D1_API_URL: 'monsterList_d1ApiUrl_v1'
 };
 
 let appState = {
-    meta: { title: 'Monster Energy Pausen-Tracker', githubRepo: 'Halbeskilo/Monster-Energy-Pausen-Tracker' },
+    meta: { title: 'Monster Energy Pausen-Tracker', apiUrl: '' },
     baseMonsters: [],
-    issueRatings: [],
-    issueMonsters: [],
+    d1Connected: false,
     currentView: 'tested',
     activeMonsterId: null,
     selectedScore: 8
@@ -67,27 +66,29 @@ function setLocalJson(key, value) {
     localStorage.setItem(key, JSON.stringify(value));
 }
 
-// Automatische Erkennung des GitHub Repositories auf GitHub Pages (<owner>.github.io/<repo>/)
-function detectGithubRepo() {
-    const saved = localStorage.getItem(STORAGE_KEYS.GITHUB_REPO);
-    if (saved) return saved.trim();
-
-    if (appState.meta && appState.meta.githubRepo) {
-        return appState.meta.githubRepo.trim();
+// Cloudflare Worker API-URL ermitteln (aus LocalStorage oder data/monsters.json)
+function getD1ApiUrl() {
+    const saved = localStorage.getItem(STORAGE_KEYS.D1_API_URL);
+    if (saved && saved.trim()) {
+        return saved.trim().replace(/\/+$/, '');
     }
-
-    const host = window.location.hostname;
-    const pathParts = window.location.pathname.split('/').filter(Boolean);
-    if (host.endsWith('.github.io') && pathParts.length >= 1) {
-        const owner = host.replace('.github.io', '');
-        const repo = pathParts[0];
-        return `${owner}/${repo}`;
+    if (appState.meta && appState.meta.apiUrl && appState.meta.apiUrl.trim()) {
+        return appState.meta.apiUrl.trim().replace(/\/+$/, '');
     }
     return '';
 }
 
-// Alle Monster + Bewertungen (Basis-JSON + GitHub Issues + LocalStorage) zusammenführen
+// Alle Monster + Bewertungen (Cloudflare D1 oder Basis-JSON + LocalStorage) zusammenführen
 function getMergedMonsters() {
+    // Wenn D1 verbunden ist, kommen alle Monster & Bewertungen direkt aus der D1-Datenbank
+    if (appState.d1Connected) {
+        return appState.baseMonsters.map(m => ({
+            ...m,
+            id: Number(m.id),
+            ratings: Array.isArray(m.ratings) ? [...m.ratings] : []
+        }));
+    }
+
     const localMonsters = getLocalJson(STORAGE_KEYS.LOCAL_MONSTERS, []);
     const localStatusMap = getLocalJson(STORAGE_KEYS.LOCAL_STATUS, {});
     const localRatingsMap = getLocalJson(STORAGE_KEYS.LOCAL_RATINGS, {});
@@ -100,17 +101,6 @@ function getMergedMonsters() {
             id: Number(m.id),
             ratings: Array.isArray(m.ratings) ? [...m.ratings] : []
         });
-    });
-
-    // Monster aus GitHub Issues
-    appState.issueMonsters.forEach(m => {
-        if (!byId.has(Number(m.id))) {
-            byId.set(Number(m.id), {
-                ...m,
-                id: Number(m.id),
-                ratings: []
-            });
-        }
     });
 
     // Lokal hinzugefügte Monster
@@ -130,10 +120,8 @@ function getMergedMonsters() {
             monster.status = localStatusMap[id];
         }
 
-        const issueRatingsForMonster = appState.issueRatings.filter(r => Number(r.monsterId) === id);
         const localRatingsForMonster = localRatingsMap[id] || [];
-
-        const combined = [...monster.ratings, ...issueRatingsForMonster, ...localRatingsForMonster];
+        const combined = [...monster.ratings, ...localRatingsForMonster];
 
         // Duplikate vermeiden (gleicher Name + Score + Kommentar)
         const seen = new Set();
@@ -144,7 +132,6 @@ function getMergedMonsters() {
             return true;
         });
 
-        // Wenn mindestens eine Bewertung vorliegt und Status nicht explizit geändert wurde, gilt es als getestet
         if (monster.ratings.length > 0 && !localStatusMap[id] && monster.status === 'upcoming') {
             monster.status = 'tested';
         }
@@ -176,63 +163,45 @@ async function loadBaseJson() {
     }
 }
 
-// Live-Daten aus GitHub Issues API abrufen (ohne Token lesbar für Public Repos)
-async function syncFromGithubIssues() {
-    const repo = detectGithubRepo();
+// Live-Daten aus Cloudflare D1 Worker API laden
+async function syncFromCloudflareD1() {
+    const apiUrl = getD1ApiUrl();
     const statusText = document.getElementById('syncStatusText');
+    const statusDot = document.getElementById('syncStatusDot');
     const feedback = document.getElementById('repoSyncFeedback');
 
-    if (!repo) {
-        statusText.textContent = 'Team-Sync (Lokal)';
+    if (!apiUrl) {
+        appState.d1Connected = false;
+        statusText.textContent = 'D1 verbinden';
+        if (statusDot) statusDot.style.background = '#ffb703';
         if (feedback) {
-            feedback.textContent = 'Kein GitHub-Repository hinterlegt. Auf GitHub Pages wird es automatisch erkannt.';
+            feedback.textContent = 'Noch keine Cloudflare Worker URL hinterlegt. Folge der kurzen Anleitung in README.md!';
         }
         return;
     }
 
-    statusText.textContent = `Sync: ${repo}`;
     try {
-        const url = `https://api.github.com/repos/${repo}/issues?state=open&per_page=100`;
-        const res = await fetch(url, { headers: { Accept: 'application/vnd.github+json' } });
-        if (!res.ok) throw new Error(`GitHub API Status ${res.status}`);
+        const res = await fetch(`${apiUrl}/api/data`, { cache: 'no-store' });
+        const data = await res.json();
+        if (!res.ok || !data.ok) {
+            throw new Error(data.error || `HTTP ${res.status}`);
+        }
 
-        const issues = await res.json();
-        const parsedRatings = [];
-        const parsedMonsters = [];
-
-        issues.forEach(issue => {
-            if (!issue.body) return;
-            const jsonMatch = issue.body.match(/```json\s*([\s\S]*?)```/);
-            if (!jsonMatch) return;
-
-            try {
-                const payload = JSON.parse(jsonMatch[1].trim());
-                if (payload.type === 'monster-rating' && payload.monsterId && payload.score) {
-                    parsedRatings.push({
-                        monsterId: Number(payload.monsterId),
-                        user: payload.user || issue.user?.login || 'Kollege',
-                        score: Number(payload.score),
-                        comment: payload.comment || '',
-                        date: (issue.created_at || '').slice(0, 10),
-                        source: 'github-issue'
-                    });
-                } else if (payload.type === 'new-monster' && payload.monster && payload.monster.name) {
-                    parsedMonsters.push(payload.monster);
-                }
-            } catch {
-                // Ignoriere Issues ohne valides JSON
-            }
-        });
-
-        appState.issueRatings = parsedRatings;
-        appState.issueMonsters = parsedMonsters;
-
+        if (Array.isArray(data.monsters) && data.monsters.length > 0) {
+            appState.baseMonsters = data.monsters;
+        }
+        appState.d1Connected = true;
+        statusText.textContent = 'D1 Live aktiv';
+        if (statusDot) statusDot.style.background = '#00ff41';
         if (feedback) {
-            feedback.textContent = `Verbunden mit ${repo} (${parsedRatings.length} Live-Bewertungen aus offenen GitHub Issues geladen).`;
+            feedback.textContent = `✅ Verbunden mit Cloudflare D1 (${appState.baseMonsters.length} Monster geladen).`;
         }
     } catch (err) {
+        appState.d1Connected = false;
+        statusText.textContent = 'D1 Fehler';
+        if (statusDot) statusDot.style.background = '#ff4d4d';
         if (feedback) {
-            feedback.textContent = `Hinweis: GitHub API für "${repo}" noch nicht erreichbar (${err.message}).`;
+            feedback.textContent = `❌ Verbindung zu "${apiUrl}" fehlgeschlagen: ${err.message}`;
         }
     }
 }
@@ -601,14 +570,36 @@ function readRatingFormPayload() {
     };
 }
 
-// Lokal speichern & Status auf 'tested' setzen
-function saveRatingLocally(rating) {
+// Bewertung speichern (in Cloudflare D1 oder lokal als Fallback)
+async function saveRating(rating) {
+    const apiUrl = getD1ApiUrl();
+
+    if (apiUrl) {
+        try {
+            const res = await fetch(`${apiUrl}/api/ratings`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(rating)
+            });
+            const data = await res.json();
+            if (!res.ok || !data.ok) {
+                throw new Error(data.error || `HTTP ${res.status}`);
+            }
+            document.getElementById('reviewCommentInput').value = '';
+            await syncFromCloudflareD1();
+            refreshUI();
+            showToast(`✅ Bewertung (${rating.score}/10) von ${rating.user} live in D1 gespeichert!`);
+            return;
+        } catch (err) {
+            showToast(`D1-Speicherfehler (${err.message}) – speichere lokal.`);
+        }
+    }
+
     const localRatingsMap = getLocalJson(STORAGE_KEYS.LOCAL_RATINGS, {});
     if (!localRatingsMap[rating.monsterId]) {
         localRatingsMap[rating.monsterId] = [];
     }
 
-    // Falls derselbe Kollege dieses Monster schon lokal bewertet hat, aktualisieren
     const existingIdx = localRatingsMap[rating.monsterId].findIndex(
         r => (r.user || '').toLowerCase() === rating.user.toLowerCase()
     );
@@ -620,54 +611,13 @@ function saveRatingLocally(rating) {
 
     setLocalJson(STORAGE_KEYS.LOCAL_RATINGS, localRatingsMap);
 
-    // Status automatisch auf 'tested' stellen
     const localStatusMap = getLocalJson(STORAGE_KEYS.LOCAL_STATUS, {});
     localStatusMap[rating.monsterId] = 'tested';
     setLocalJson(STORAGE_KEYS.LOCAL_STATUS, localStatusMap);
 
     document.getElementById('reviewCommentInput').value = '';
     refreshUI();
-}
-
-// GitHub Issue URL zum Teilen mit allen Kollegen öffnen
-function openGithubIssueForRating(rating) {
-    const repo = detectGithubRepo();
-    const monsters = getMergedMonsters();
-    const monster = monsters.find(m => m.id === rating.monsterId);
-    const monsterName = monster ? monster.name : `Monster #${rating.monsterId}`;
-
-    if (!repo) {
-        showToast('Bitte trage zuerst unter "Team-Sync" euer GitHub-Repo (z.B. user/MonsterList) ein!');
-        document.getElementById('syncModal').classList.remove('hidden');
-        return;
-    }
-
-    const payload = {
-        type: 'monster-rating',
-        monsterId: rating.monsterId,
-        monsterName,
-        user: rating.user,
-        score: rating.score,
-        comment: rating.comment,
-        date: rating.date
-    };
-
-    const title = `[Bewertung] ${monsterName} – ${rating.score}/10 von ${rating.user}`;
-    const body = [
-        `### Monster Energy Bewertung`,
-        `- **Sorte:** ${monsterName} (ID: ${rating.monsterId})`,
-        `- **Kollege:** ${rating.user}`,
-        `- **Punkte:** ${rating.score} / 10`,
-        `- **Kommentar:** ${rating.comment || '-'}`,
-        ``,
-        `<!-- Automatisch generierte Daten für GitHub Pages & GitHub Action -->`,
-        '```json',
-        JSON.stringify(payload, null, 2),
-        '```'
-    ].join('\n');
-
-    const issueUrl = `https://github.com/${repo}/issues/new?labels=rating&title=${encodeURIComponent(title)}&body=${encodeURIComponent(body)}`;
-    window.open(issueUrl, '_blank', 'noopener');
+    showToast(`Bewertung (${rating.score}/10) lokal gespeichert!`);
 }
 
 // Komplettes aktualisiertes JSON für data/monsters.json erzeugen
@@ -692,7 +642,7 @@ function buildExportableJsonString() {
     const exportData = {
         meta: {
             ...appState.meta,
-            githubRepo: detectGithubRepo(),
+            apiUrl: getD1ApiUrl(),
             updatedAt: new Date().toISOString().slice(0, 10)
         },
         monsters: merged
@@ -762,39 +712,72 @@ function bindEvents() {
         btn.addEventListener('click', () => setScoreButtons(btn.dataset.score));
     });
 
-    // Bewertung speichern (lokal)
-    document.getElementById('ratingForm').addEventListener('submit', (e) => {
+    // Bewertung speichern (D1 oder lokal)
+    document.getElementById('ratingForm').addEventListener('submit', async (e) => {
         e.preventDefault();
         const rating = readRatingFormPayload();
         if (!rating) return;
-        saveRatingLocally(rating);
-        showToast(`Bewertung (${rating.score}/10) von ${rating.user} gespeichert!`);
-    });
-
-    // Bewertung zusätzlich auf GitHub teilen
-    document.getElementById('submitRatingViaGithubBtn').addEventListener('click', () => {
-        const rating = readRatingFormPayload();
-        if (!rating) return;
-        saveRatingLocally(rating);
-        openGithubIssueForRating(rating);
+        await saveRating(rating);
     });
 
     // Status eines Monsters ändern (Getestet <-> Demnächst)
-    document.getElementById('saveStatusChangeBtn').addEventListener('click', () => {
+    document.getElementById('saveStatusChangeBtn').addEventListener('click', async () => {
         if (!appState.activeMonsterId) return;
         const newStatus = document.getElementById('modalStatusSelect').value;
+        const apiUrl = getD1ApiUrl();
+
+        if (apiUrl) {
+            try {
+                const res = await fetch(`${apiUrl}/api/monsters/status`, {
+                    method: 'PATCH',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ monsterId: appState.activeMonsterId, status: newStatus })
+                });
+                const data = await res.json();
+                if (!res.ok || !data.ok) throw new Error(data.error || `HTTP ${res.status}`);
+                await syncFromCloudflareD1();
+                refreshUI();
+                showToast('✅ Status in Cloudflare D1 aktualisiert!');
+                return;
+            } catch (err) {
+                showToast(`D1-Fehler (${err.message}) – speichere Status lokal.`);
+            }
+        }
+
         const localStatusMap = getLocalJson(STORAGE_KEYS.LOCAL_STATUS, {});
         localStatusMap[appState.activeMonsterId] = newStatus;
         setLocalJson(STORAGE_KEYS.LOCAL_STATUS, localStatusMap);
         refreshUI();
-        showToast('Status aktualisiert!');
+        showToast('Status lokal aktualisiert!');
     });
 
-    // Neues Monster hinzufügen (lokal)
-    document.getElementById('addMonsterForm').addEventListener('submit', (e) => {
+    // Neues Monster hinzufügen (D1 oder lokal)
+    document.getElementById('addMonsterForm').addEventListener('submit', async (e) => {
         e.preventDefault();
         const monster = createMonsterFromForm();
         if (!monster) return;
+
+        const apiUrl = getD1ApiUrl();
+        if (apiUrl) {
+            try {
+                const res = await fetch(`${apiUrl}/api/monsters`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(monster)
+                });
+                const data = await res.json();
+                if (!res.ok || !data.ok) throw new Error(data.error || `HTTP ${res.status}`);
+
+                document.getElementById('addMonsterForm').reset();
+                document.getElementById('addMonsterModal').classList.add('hidden');
+                await syncFromCloudflareD1();
+                refreshUI();
+                showToast(`✅ "${monster.name}" live in D1 hinzugefügt!`);
+                return;
+            } catch (err) {
+                showToast(`D1-Fehler (${err.message}) – speichere Monster lokal.`);
+            }
+        }
 
         const localMonsters = getLocalJson(STORAGE_KEYS.LOCAL_MONSTERS, []);
         localMonsters.push(monster);
@@ -803,41 +786,7 @@ function bindEvents() {
         document.getElementById('addMonsterForm').reset();
         document.getElementById('addMonsterModal').classList.add('hidden');
         refreshUI();
-        showToast(`"${monster.name}" wurde hinzugefügt!`);
-    });
-
-    // Neues Monster per GitHub Issue einreichen
-    document.getElementById('submitNewMonsterGithubBtn').addEventListener('click', () => {
-        const monster = createMonsterFromForm();
-        if (!monster) return;
-
-        const localMonsters = getLocalJson(STORAGE_KEYS.LOCAL_MONSTERS, []);
-        localMonsters.push(monster);
-        setLocalJson(STORAGE_KEYS.LOCAL_MONSTERS, localMonsters);
-        refreshUI();
-
-        const repo = detectGithubRepo();
-        if (!repo) {
-            showToast('Monster lokal gespeichert! Für GitHub-Issues bitte unter "Team-Sync" das Repo angeben.');
-            return;
-        }
-
-        const payload = { type: 'new-monster', monster };
-        const title = `[Neues Monster] ${monster.name} (${monster.status === 'tested' ? 'Getestet' : 'Demnächst'})`;
-        const body = [
-            `### Neues Monster für die Liste`,
-            `- **Name:** ${monster.name}`,
-            `- **Status:** ${monster.status}`,
-            `- **Kategorie:** ${monster.category}`,
-            `- **Bild:** ${monster.image}`,
-            '',
-            '```json',
-            JSON.stringify(payload, null, 2),
-            '```'
-        ].join('\n');
-
-        const url = `https://github.com/${repo}/issues/new?labels=new-monster&title=${encodeURIComponent(title)}&body=${encodeURIComponent(body)}`;
-        window.open(url, '_blank', 'noopener');
+        showToast(`"${monster.name}" wurde lokal hinzugefügt!`);
     });
 
     // Modals öffnen & schließen
@@ -854,7 +803,7 @@ function bindEvents() {
     });
 
     document.getElementById('openSyncModalBtn').addEventListener('click', () => {
-        document.getElementById('githubRepoInput').value = detectGithubRepo();
+        document.getElementById('d1ApiUrlInput').value = getD1ApiUrl();
         updateJsonExportPreview();
         document.getElementById('syncModal').classList.remove('hidden');
     });
@@ -872,13 +821,13 @@ function bindEvents() {
         });
     });
 
-    // GitHub-Repo speichern & neu synchronisieren
-    document.getElementById('saveRepoConfigBtn').addEventListener('click', async () => {
-        const val = document.getElementById('githubRepoInput').value.trim();
-        localStorage.setItem(STORAGE_KEYS.GITHUB_REPO, val);
-        await syncFromGithubIssues();
+    // Cloudflare D1 Worker URL speichern & testen
+    document.getElementById('saveApiUrlBtn').addEventListener('click', async () => {
+        const val = document.getElementById('d1ApiUrlInput').value.trim().replace(/\/+$/, '');
+        localStorage.setItem(STORAGE_KEYS.D1_API_URL, val);
+        await syncFromCloudflareD1();
         refreshUI();
-        showToast('GitHub-Sync aktualisiert!');
+        showToast(appState.d1Connected ? '✅ Mit Cloudflare D1 verbunden!' : 'URL gespeichert.');
     });
 
     // JSON herunterladen
@@ -934,6 +883,6 @@ function createMonsterFromForm() {
 (async function initApp() {
     bindEvents();
     await loadBaseJson();
-    await syncFromGithubIssues();
+    await syncFromCloudflareD1();
     refreshUI();
 })();
