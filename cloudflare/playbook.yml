@@ -1,0 +1,119 @@
+---
+# Ansible Playbook: Automatisches Setup & Deployment für Cloudflare D1 + Worker + GitHub Pages
+# Ausführung (z. B. in WSL / Linux):
+#   ansible-playbook cloudflare/playbook.yml
+
+- name: Deploy Monster Energy Pausen-Tracker (Cloudflare D1 + Worker + GitHub Pages)
+  hosts: localhost
+  connection: local
+  gather_facts: false
+
+  vars:
+    project_root: "{{ playbook_dir }}/.."
+    cloudflare_dir: "{{ playbook_dir }}"
+    db_name: "monster-db"
+    worker_name: "monster-pausen-api"
+
+  tasks:
+    - name: 1. Prüfe Cloudflare Login / Authentifizierung
+      ansible.builtin.command:
+        cmd: npx --yes wrangler whoami
+        chdir: "{{ cloudflare_dir }}"
+      register: whoami_check
+      changed_when: false
+      failed_when: false
+
+    - name: 1b. Cloudflare Browser-Login starten (falls noch nicht eingeloggt)
+      ansible.builtin.command:
+        cmd: npx --yes wrangler login
+        chdir: "{{ cloudflare_dir }}"
+      when: whoami_check.rc != 0
+
+    - name: 2. bestehenden D1 Datenbanken abrufen
+      ansible.builtin.command:
+        cmd: npx --yes wrangler d1 list --json
+        chdir: "{{ cloudflare_dir }}"
+      register: d1_list_out
+      changed_when: false
+
+    - name: 2b. D1 Datenbank '{{ db_name }}' erstellen (falls noch nicht vorhanden)
+      ansible.builtin.command:
+        cmd: npx --yes wrangler d1 create {{ db_name }}
+        chdir: "{{ cloudflare_dir }}"
+      when: db_name not in d1_list_out.stdout
+
+    - name: 2c. Aktualisierte D1 Datenbank-Liste abrufen
+      ansible.builtin.command:
+        cmd: npx --yes wrangler d1 list --json
+        chdir: "{{ cloudflare_dir }}"
+      register: d1_list_final
+      changed_when: false
+
+    - name: 2d. D1 Database UUID ermitteln
+      ansible.builtin.set_fact:
+        d1_database_id: "{{ (d1_list_final.stdout | from_json | selectattr('name', 'equalto', db_name) | first).uuid }}"
+
+    - name: 3. wrangler.toml mit D1 Binding schreiben
+      ansible.builtin.copy:
+        dest: "{{ cloudflare_dir }}/wrangler.toml"
+        mode: "0644"
+        content: |
+          name = "{{ worker_name }}"
+          main = "worker.js"
+          compatibility_date = "2024-10-01"
+
+          [[d1_databases]]
+          binding = "DB"
+          database_name = "{{ db_name }}"
+          database_id = "{{ d1_database_id }}"
+
+    - name: 4. SQL-Schema & alle 31 Monster in Cloudflare D1 einspielen
+      ansible.builtin.command:
+        cmd: npx --yes wrangler d1 execute {{ db_name }} --remote --file=schema.sql
+        chdir: "{{ cloudflare_dir }}"
+      register: d1_seed
+
+    - name: 5. Cloudflare Worker deployen
+      ansible.builtin.command:
+        cmd: npx --yes wrangler deploy
+        chdir: "{{ cloudflare_dir }}"
+      register: worker_deploy
+
+    - name: 6. Worker-URL aus Deployment-Output extrahieren & in app.js / monsters.json eintragen
+      ansible.builtin.shell: |
+        node -e '
+          const fs = require("fs");
+          const out = process.argv[1] || "";
+          const match = out.match(/https:\/\/[a-zA-Z0-9.-]+\.workers\.dev/);
+          if (!match) {
+            console.error("Konnte Worker-URL nicht automatisch erkennen.");
+            process.exit(1);
+          }
+          const url = match[0];
+          console.log("Erkannte Worker-URL:", url);
+
+          // Update data/monsters.json
+          const jsonPath = "../data/monsters.json";
+          const data = JSON.parse(fs.readFileSync(jsonPath, "utf8"));
+          data.meta.apiUrl = url;
+          fs.writeFileSync(jsonPath, JSON.stringify(data, null, 2) + "\n", "utf8");
+
+          // Update app.js
+          const appPath = "../app.js";
+          let appJs = fs.readFileSync(appPath, "utf8");
+          appJs = appJs.replace(/apiUrl:\s*["\x27][^"\x27]*["\x27]/, `apiUrl: "${url}"`);
+          fs.writeFileSync(appPath, appJs, "utf8");
+        ' "{{ worker_deploy.stdout }}"
+      args:
+        chdir: "{{ cloudflare_dir }}"
+      register: url_update
+
+    - name: 7. Änderungen committen & zu GitHub Pages pushen
+      ansible.builtin.shell: |
+        git add data/monsters.json app.js cloudflare/wrangler.toml
+        if ! git diff --cached --quiet; then
+          git commit -m "chore: configure live Cloudflare D1 worker URL"
+          git push origin main
+        fi
+      args:
+        chdir: "{{ project_root }}"
