@@ -186,6 +186,17 @@ body {
     color: var(--text-muted);
 }
 
+/* Verbindungs-Button: unsichtbar, erscheint erst beim Drüberfahren */
+.hover-reveal {
+    opacity: 0;
+    transition: opacity 0.2s ease;
+}
+
+.hover-reveal:hover,
+.hover-reveal:focus-visible {
+    opacity: 1;
+}
+
 /* Langer Monster-Name beim Favoriten: umbrechen statt abschneiden */
 #statTopMonster {
     font-size: 1.1rem;
