@@ -9,7 +9,7 @@ const STORAGE_KEYS = {
 };
 
 let appState = {
-    meta: { title: 'Monster Energy Pausen-Tracker', githubRepo: '' },
+    meta: { title: 'Monster Energy Pausen-Tracker', githubRepo: 'Halbeskilo/Monster-Energy-Pausen-Tracker' },
     baseMonsters: [],
     issueRatings: [],
     issueMonsters: [],
