@@ -568,14 +568,25 @@ function openMonsterModal(monsterId) {
     if (!nameInput.value && savedName) {
         nameInput.value = savedName;
     }
-    const currentName = nameInput.value.trim().toLowerCase();
-    const ownRating = currentName
+    fillOwnRating();
+
+    document.getElementById('monsterModal').classList.remove('hidden');
+}
+
+// Eigene bisherige Bewertung (anhand des Namens) ins Formular laden, sonst leeren
+function fillOwnRating() {
+    const monster = getMergedMonsters().find(m => m.id === Number(appState.activeMonsterId));
+    const currentName = document.getElementById('reviewerNameInput').value.trim().toLowerCase();
+    const ownRating = monster && currentName
         ? monster.ratings.find(r => (r.user || '').trim().toLowerCase() === currentName)
         : null;
     document.getElementById('reviewCommentInput').value = ownRating ? (ownRating.comment || '') : '';
     setScoreButtons(ownRating ? ownRating.score : null);
-
-    document.getElementById('monsterModal').classList.remove('hidden');
+    const submitBtn = document.querySelector('#ratingForm button[type="submit"]');
+    if (submitBtn) {
+        if (!submitBtn.dataset.label) submitBtn.dataset.label = submitBtn.textContent;
+        submitBtn.textContent = ownRating ? '✏️ Bewertung ändern' : submitBtn.dataset.label;
+    }
 }
 
 function setScoreButtons(score) {
@@ -627,7 +638,6 @@ async function saveRating(rating) {
             if (!res.ok || !data.ok) {
                 throw new Error(data.error || `HTTP ${res.status}`);
             }
-            document.getElementById('reviewCommentInput').value = '';
             await syncFromCloudflareD1();
             refreshUI();
             showToast(`✅ Bewertung (${rating.score}/10) von ${rating.user} live in D1 gespeichert!`);
@@ -656,8 +666,6 @@ async function saveRating(rating) {
     const localStatusMap = getLocalJson(STORAGE_KEYS.LOCAL_STATUS, {});
     localStatusMap[rating.monsterId] = 'tested';
     setLocalJson(STORAGE_KEYS.LOCAL_STATUS, localStatusMap);
-
-    document.getElementById('reviewCommentInput').value = '';
     refreshUI();
     showToast(`Bewertung (${rating.score}/10) lokal gespeichert!`);
 }
@@ -760,6 +768,21 @@ function bindEvents() {
         const rating = readRatingFormPayload();
         if (!rating) return;
         await saveRating(rating);
+    });
+
+    // Enter im Kommentarfeld speichert die Bewertung (Shift+Enter = neue Zeile)
+    document.getElementById('reviewCommentInput').addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) {
+            e.preventDefault();
+            document.getElementById('ratingForm').requestSubmit();
+        }
+    });
+
+    // Namen im Browser merken & eigene Bewertung für diesen Namen laden
+    document.getElementById('reviewerNameInput').addEventListener('change', (e) => {
+        const name = e.target.value.trim();
+        if (name) localStorage.setItem(STORAGE_KEYS.REVIEWER_NAME, name);
+        if (appState.activeMonsterId !== null) fillOwnRating();
     });
 
     // Status eines Monsters ändern (Getestet <-> Demnächst)
