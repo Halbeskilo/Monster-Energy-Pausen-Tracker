@@ -211,7 +211,42 @@
         </div>
     </div>
 
-    <!-- Modal 2: Neues Monster hinzufügen -->
+    <!-- Modal 2: Cloudflare D1 Datenbank-Verbindung & JSON Backup -->
+    <div id="syncModal" class="modal-backdrop hidden" role="dialog" aria-modal="true" aria-labelledby="syncModalTitle">
+        <div class="modal-card">
+            <button class="modal-close" id="closeSyncModalBtn" type="button" aria-label="Schließen">✕</button>
+            <h2 id="syncModalTitle">☁️ Cloudflare D1 Datenbank-Verbindung</h2>
+            <p class="muted">
+                Alle Bewertungen, Status-Änderungen und neuen Monster werden live in deiner kostenlosen <strong>Cloudflare D1</strong> SQL-Datenbank gespeichert.
+            </p>
+
+            <div class="sync-section">
+                <h3>1. Verbindung</h3>
+                <p class="small-text">
+                    Die Worker-URL wird automatisch vom Deploy-Workflow in <code>data/monsters.json</code> (<code>meta.apiUrl</code>) eingetragen.
+                </p>
+                <div class="repo-input-row">
+                    <button class="btn btn-primary" id="saveApiUrlBtn" type="button">🔄 Verbindung erneut prüfen</button>
+                </div>
+                <p id="repoSyncFeedback" class="small-text highlight-text"></p>
+            </div>
+
+            <div class="sync-section">
+                <h3>2. Backup als <code>monsters.json</code></h3>
+                <p class="small-text">
+                    Du kannst den aktuellen Stand jederzeit als JSON-Backup herunterladen:
+                </p>
+                <div class="export-actions">
+                    <button class="btn btn-primary" id="downloadJsonBtn" type="button">💾 monsters.json herunterladen</button>
+                    <button class="btn btn-secondary" id="copyJsonBtn" type="button">📋 JSON kopieren</button>
+                    <button class="btn btn-danger" id="resetLocalChangesBtn" type="button">Lokalen Cache leeren</button>
+                </div>
+                <textarea id="jsonExportPreview" class="json-preview" rows="6" readonly></textarea>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal 3: Neues Monster hinzufügen -->
     <div id="addMonsterModal" class="modal-backdrop hidden" role="dialog" aria-modal="true" aria-labelledby="addMonsterModalTitle">
         <div class="modal-card">
             <button class="modal-close" id="closeAddMonsterModalBtn" type="button" aria-label="Schließen">✕</button>
@@ -272,41 +307,6 @@
                     <button type="submit" class="btn btn-primary">➕ Monster speichern</button>
                 </div>
             </form>
-        </div>
-    </div>
-
-    <!-- Modal 3: Cloudflare D1 Datenbank-Verbindung & JSON Backup -->
-    <div id="syncModal" class="modal-backdrop hidden" role="dialog" aria-modal="true" aria-labelledby="syncModalTitle">
-        <div class="modal-card">
-            <button class="modal-close" id="closeSyncModalBtn" type="button" aria-label="Schließen">✕</button>
-            <h2 id="syncModalTitle">☁️ Cloudflare D1 Datenbank-Verbindung</h2>
-            <p class="muted">
-                Alle Bewertungen, Status-Änderungen und neuen Monster werden live in deiner kostenlosen <strong>Cloudflare D1</strong> SQL-Datenbank gespeichert.
-            </p>
-
-            <div class="sync-section">
-                <h3>1. Verbindung</h3>
-                <p class="small-text">
-                    Die Worker-URL wird automatisch vom Deploy-Workflow in <code>data/monsters.json</code> (<code>meta.apiUrl</code>) eingetragen.
-                </p>
-                <div class="repo-input-row">
-                    <button class="btn btn-primary" id="saveApiUrlBtn" type="button">🔄 Verbindung erneut prüfen</button>
-                </div>
-                <p id="repoSyncFeedback" class="small-text highlight-text"></p>
-            </div>
-
-            <div class="sync-section">
-                <h3>2. Backup als <code>monsters.json</code></h3>
-                <p class="small-text">
-                    Du kannst den aktuellen Stand jederzeit als JSON-Backup herunterladen:
-                </p>
-                <div class="export-actions">
-                    <button class="btn btn-primary" id="downloadJsonBtn" type="button">💾 monsters.json herunterladen</button>
-                    <button class="btn btn-secondary" id="copyJsonBtn" type="button">📋 JSON kopieren</button>
-                    <button class="btn btn-danger" id="resetLocalChangesBtn" type="button">Lokalen Cache leeren</button>
-                </div>
-                <textarea id="jsonExportPreview" class="json-preview" rows="6" readonly></textarea>
-            </div>
         </div>
     </div>
 
