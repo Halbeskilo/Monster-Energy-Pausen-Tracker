@@ -12,6 +12,7 @@ let appState = {
     meta: { title: 'Monster Energy Pausen-Tracker', apiUrl: '' },
     baseMonsters: [],
     d1Connected: false,
+    activeApiUrl: '',
     currentView: 'tested',
     activeMonsterId: null,
     selectedScore: 8
@@ -68,6 +69,7 @@ function setLocalJson(key, value) {
 
 // Cloudflare Worker API-URL ermitteln (aus LocalStorage oder data/monsters.json)
 function getD1ApiUrl() {
+    if (appState.activeApiUrl) return appState.activeApiUrl;
     const saved = localStorage.getItem(STORAGE_KEYS.D1_API_URL);
     if (saved && saved.trim()) {
         return saved.trim().replace(/\/+$/, '');
@@ -164,14 +166,88 @@ async function loadBaseJson() {
 }
 
 // Live-Daten aus Cloudflare D1 Worker API laden
+async function fetchD1Data(apiUrl) {
+    const res = await fetch(`${apiUrl}/api/data`, { cache: 'no-store' });
+    const data = await res.json();
+    if (!res.ok || !data.ok) {
+        throw new Error(data.error || `HTTP ${res.status}`);
+    }
+    return data;
+}
+
+async function postD1(apiUrl, path, method, body) {
+    const res = await fetch(`${apiUrl}${path}`, {
+        method,
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body)
+    });
+    const data = await res.json();
+    if (!res.ok || !data.ok) throw new Error(data.error || `HTTP ${res.status}`);
+    return data;
+}
+
+// Änderungen, die offline/ohne Verbindung nur lokal gespeichert wurden, nach D1 hochladen
+async function uploadLocalChanges(apiUrl) {
+    const localMonsters = getLocalJson(STORAGE_KEYS.LOCAL_MONSTERS, []);
+    const localRatingsMap = getLocalJson(STORAGE_KEYS.LOCAL_RATINGS, {});
+    const localStatusMap = getLocalJson(STORAGE_KEYS.LOCAL_STATUS, {});
+    const hasPending = localMonsters.length || Object.keys(localRatingsMap).length || Object.keys(localStatusMap).length;
+    if (!hasPending) return 0;
+
+    let uploaded = 0;
+    const idMap = {};
+
+    const remainingMonsters = [];
+    for (const m of localMonsters) {
+        try {
+            const data = await postD1(apiUrl, '/api/monsters', 'POST', m);
+            if (data.id) idMap[m.id] = data.id;
+            uploaded++;
+        } catch {
+            remainingMonsters.push(m);
+        }
+    }
+
+    const remainingRatings = {};
+    for (const [id, ratings] of Object.entries(localRatingsMap)) {
+        for (const r of ratings) {
+            try {
+                await postD1(apiUrl, '/api/ratings', 'POST', { ...r, monsterId: Number(idMap[id] || id) });
+                uploaded++;
+            } catch {
+                (remainingRatings[id] = remainingRatings[id] || []).push(r);
+            }
+        }
+    }
+
+    const remainingStatus = {};
+    for (const [id, status] of Object.entries(localStatusMap)) {
+        try {
+            await postD1(apiUrl, '/api/monsters/status', 'PATCH', { monsterId: Number(idMap[id] || id), status });
+            uploaded++;
+        } catch {
+            remainingStatus[id] = status;
+        }
+    }
+
+    setLocalJson(STORAGE_KEYS.LOCAL_MONSTERS, remainingMonsters);
+    setLocalJson(STORAGE_KEYS.LOCAL_RATINGS, remainingRatings);
+    setLocalJson(STORAGE_KEYS.LOCAL_STATUS, remainingStatus);
+    return uploaded;
+}
+
 async function syncFromCloudflareD1() {
-    const apiUrl = getD1ApiUrl();
     const statusText = document.getElementById('syncStatusText');
     const statusDot = document.getElementById('syncStatusDot');
     const feedback = document.getElementById('repoSyncFeedback');
 
-    if (!apiUrl) {
+    const saved = (localStorage.getItem(STORAGE_KEYS.D1_API_URL) || '').trim().replace(/\/+$/, '');
+    const fromJson = (appState.meta && appState.meta.apiUrl ? appState.meta.apiUrl : '').trim().replace(/\/+$/, '');
+    const candidates = [...new Set([saved, fromJson].filter(Boolean))];
+
+    if (!candidates.length) {
         appState.d1Connected = false;
+        appState.activeApiUrl = '';
         statusText.textContent = 'D1 verbinden';
         if (statusDot) statusDot.style.background = '#ffb703';
         if (feedback) {
@@ -180,29 +256,44 @@ async function syncFromCloudflareD1() {
         return;
     }
 
-    try {
-        const res = await fetch(`${apiUrl}/api/data`, { cache: 'no-store' });
-        const data = await res.json();
-        if (!res.ok || !data.ok) {
-            throw new Error(data.error || `HTTP ${res.status}`);
-        }
+    let lastError = null;
+    for (const apiUrl of candidates) {
+        try {
+            let data = await fetchD1Data(apiUrl);
 
-        if (Array.isArray(data.monsters) && data.monsters.length > 0) {
-            appState.baseMonsters = data.monsters;
+            // Falsche/alte gespeicherte URL entfernen, wenn die URL aus monsters.json funktioniert
+            if (saved && apiUrl !== saved) {
+                localStorage.removeItem(STORAGE_KEYS.D1_API_URL);
+            }
+            appState.activeApiUrl = apiUrl;
+
+            const uploaded = await uploadLocalChanges(apiUrl);
+            if (uploaded > 0) {
+                data = await fetchD1Data(apiUrl);
+                showToast(`☁️ ${uploaded} lokal gespeicherte Änderung(en) nach D1 hochgeladen.`);
+            }
+
+            if (Array.isArray(data.monsters) && data.monsters.length > 0) {
+                appState.baseMonsters = data.monsters;
+            }
+            appState.d1Connected = true;
+            statusText.textContent = 'D1 Live aktiv';
+            if (statusDot) statusDot.style.background = '#00ff41';
+            if (feedback) {
+                feedback.textContent = `✅ Verbunden mit Cloudflare D1 (${appState.baseMonsters.length} Monster geladen).`;
+            }
+            return;
+        } catch (err) {
+            lastError = { apiUrl, err };
         }
-        appState.d1Connected = true;
-        statusText.textContent = 'D1 Live aktiv';
-        if (statusDot) statusDot.style.background = '#00ff41';
-        if (feedback) {
-            feedback.textContent = `✅ Verbunden mit Cloudflare D1 (${appState.baseMonsters.length} Monster geladen).`;
-        }
-    } catch (err) {
-        appState.d1Connected = false;
-        statusText.textContent = 'D1 Fehler';
-        if (statusDot) statusDot.style.background = '#ff4d4d';
-        if (feedback) {
-            feedback.textContent = `❌ Verbindung zu "${apiUrl}" fehlgeschlagen: ${err.message}`;
-        }
+    }
+
+    appState.d1Connected = false;
+    appState.activeApiUrl = '';
+    statusText.textContent = 'D1 Fehler';
+    if (statusDot) statusDot.style.background = '#ff4d4d';
+    if (feedback && lastError) {
+        feedback.textContent = `❌ Verbindung zu "${lastError.apiUrl}" fehlgeschlagen: ${lastError.err.message}`;
     }
 }
 
