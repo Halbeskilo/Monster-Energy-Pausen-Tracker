@@ -3,7 +3,6 @@
     "title": "Monster Energy Pausen-Tracker",
     "subtitle": "Unsere getesteten & geplanten Sorten im Überblick",
     "apiUrl": "https://monster-pausen-api.max-200.workers.dev",
-    "githubRepo": "Halbeskilo/Monster-Energy-Pausen-Tracker",
     "updatedAt": "2026-10-23"
   },
   "monsters": [

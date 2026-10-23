@@ -1,11 +1,5 @@
-.DS_Store
-Thumbs.db
 *.log
 .vscode/
 node_modules/
-**/.terraform/
-*.tfstate
-*.tfstate.*
-terraform.tfvars
-*.auto.tfvars
-
+.DS_Store
+Thumbs.db

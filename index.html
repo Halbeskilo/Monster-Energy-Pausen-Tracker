@@ -285,13 +285,12 @@
             </p>
 
             <div class="sync-section">
-                <h3>1. Cloudflare Worker API-URL</h3>
+                <h3>1. Verbindung</h3>
                 <p class="small-text">
-                    Trage hier deine Worker-URL ein (z.B. <code>https://monster-pausen-api.dein-name.workers.dev</code>) oder hinterlege sie fest in <code>data/monsters.json</code> unter <code>apiUrl</code>, damit kein Kollege etwas einstellen muss:
+                    Die Worker-URL wird automatisch vom Deploy-Workflow in <code>data/monsters.json</code> (<code>meta.apiUrl</code>) eingetragen.
                 </p>
                 <div class="repo-input-row">
-                    <input type="url" id="d1ApiUrlInput" placeholder="https://monster-pausen-api.dein-name.workers.dev">
-                    <button class="btn btn-primary" id="saveApiUrlBtn" type="button">Verbinden & Testen</button>
+                    <button class="btn btn-primary" id="saveApiUrlBtn" type="button">🔄 Verbindung erneut prüfen</button>
                 </div>
                 <p id="repoSyncFeedback" class="small-text highlight-text"></p>
             </div>
@@ -313,7 +312,7 @@
 
     <div id="toastNotification" class="toast hidden" role="status" aria-live="polite"></div>
 
-    <script src="app.js?v=2"></script>
+    <script src="app.js?v=3"></script>
 </body>
 
 </html>

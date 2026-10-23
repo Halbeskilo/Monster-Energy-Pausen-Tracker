@@ -4,54 +4,17 @@ const STORAGE_KEYS = {
     LOCAL_RATINGS: 'monsterList_localRatings_v1',
     LOCAL_MONSTERS: 'monsterList_localMonsters_v1',
     LOCAL_STATUS: 'monsterList_localStatus_v1',
-    REVIEWER_NAME: 'monsterList_reviewerName_v1',
-    D1_API_URL: 'monsterList_d1ApiUrl_v1'
+    REVIEWER_NAME: 'monsterList_reviewerName_v1'
 };
 
 let appState = {
     meta: { title: 'Monster Energy Pausen-Tracker', apiUrl: '' },
     baseMonsters: [],
     d1Connected: false,
-    activeApiUrl: '',
     currentView: 'tested',
     activeMonsterId: null,
     selectedScore: 8
 };
-
-// Fallback-Daten, falls jemand index.html direkt per Doppelklick (file://) ohne lokalen Server öffnet
-const FALLBACK_MONSTERS = [
-    { id: 1, name: "Original Green Monster Energy", category: "Original", status: "tested", image: "res/OriginalGreenMonsterEnergy.webp", caffeine: 160, sugar: 55, taste: "Original, klassisch, süß", ratings: [] },
-    { id: 2, name: "Ultra White (Das Weiße Monster)", category: "Ultra (Zero Sugar)", status: "tested", image: "res/UltraA.K.A.DasWisseMonster.webp", caffeine: 150, sugar: 0, taste: "Leicht, zitronig, erfrischend, zuckerfrei", ratings: [] },
-    { id: 3, name: "Mango Loco (Juiced)", category: "Juiced", status: "tested", image: "res/MangoLoco.webp", caffeine: 160, sugar: 55, taste: "Mango, süß, exotisch, fruchtig", ratings: [] },
-    { id: 4, name: "Punch Monster Pipeline Punch", category: "Punch", status: "tested", image: "res/PunchMonsterPipelinePunch.webp", caffeine: 160, sugar: 46, taste: "Passionsfrucht, Orange, Guave, süß", ratings: [] },
-    { id: 5, name: "Juiced Monster Aussie Lemonade", category: "Juiced", status: "tested", image: "res/JuicedMonsterAussieLemonade.webp", caffeine: 160, sugar: 53, taste: "Herbe Zitronenlimonade, spritzig", ratings: [] },
-    { id: 6, name: "Juiced Monster Bad Apple", category: "Juiced", status: "tested", image: "res/JuicedMonsterbadApple.webp", caffeine: 160, sugar: 41, taste: "Knackiger Apfel, Cidre-Note, fruchtig", ratings: [] },
-    { id: 7, name: "Zero Zucker Ultra Peachy Keen", category: "Ultra (Zero Sugar)", status: "tested", image: "res/ZeroZuckerUltraPeachyKeen.webp", caffeine: 150, sugar: 0, taste: "Süßer Pfirsich, zuckerfrei", ratings: [] },
-    { id: 8, name: "Zero Zucker Ultra Strawberry Dreams", category: "Ultra (Zero Sugar)", status: "tested", image: "res/ZeroZuckerUltraStrawberryDreams.webp", caffeine: 150, sugar: 0, taste: "Erdbeere, leicht cremig, zuckerfrei", ratings: [] },
-    { id: 9, name: "Lando Norris Zero Sugar", category: "Special Edition", status: "upcoming", image: "res/andoNorrisZeroSugar.webp", caffeine: 160, sugar: 0, taste: "Erfrischend, leicht, zuckerfrei", ratings: [] },
-    { id: 10, name: "Juiced Monster Viking Berry", category: "Juiced", status: "upcoming", image: "res/JuicedMonsterVikingBerry.webp", caffeine: 160, sugar: 42, taste: "Nordische Beeren, Waldbeere, fruchtig", ratings: [] },
-    { id: 11, name: "Punch Monster Rio Punch", category: "Punch", status: "upcoming", image: "res/PunchMonsterRioPunch.webp", caffeine: 160, sugar: 50, taste: "Papaya, Vanille-Eis-Note, Schwarze Johannisbeere", ratings: [] },
-    { id: 12, name: "Zero Zucker Fantasy Ruby Red", category: "Ultra (Zero Sugar)", status: "upcoming", image: "res/ZeroZuckerFantasyRubyRed.webp", caffeine: 150, sugar: 0, taste: "Pink Grapefruit, Zitrus, zuckerfrei", ratings: [] },
-    { id: 13, name: "Monster Energy Nitro Cosmic Peach", category: "Nitro", status: "upcoming", image: "res/MonsterEnergyNitroCosmicPeach.webp", caffeine: 160, sugar: 53, taste: "Pfirsich, feinperlig cremig (Nitro)", ratings: [] },
-    { id: 14, name: "Monster Energy Nitro Super Dry", category: "Nitro", status: "tested", image: "res/MonsterEnergyNitroSuperDry.webp", caffeine: 160, sugar: 53, taste: "Spritzige Limette/Zitrus, trockenes Finish", ratings: [] },
-    { id: 15, name: "Juiced Monster Monarch", category: "Juiced", status: "tested", image: "res/JuicedMonsterMonarch.webp", caffeine: 160, sugar: 44, taste: "Pfirsich & Nektarine, weich und fruchtig", ratings: [] },
-    { id: 16, name: "Juiced Monster Khaotic", category: "Juiced", status: "upcoming", image: "res/JuicedMonsterKhaotic.webp", caffeine: 160, sugar: 37, taste: "Tropische Orange, fruchtig-süß", ratings: [] },
-    { id: 17, name: "Punch Monster Pacific Punch", category: "Punch", status: "tested", image: "res/PunchMonsterPacificPunch.webp", caffeine: 160, sugar: 55, taste: "Klassischer Fruchtpunsch, Kirsche & Ananas", ratings: [] },
-    { id: 18, name: "Punch Monster Mixxd Punch", category: "Punch", status: "upcoming", image: "res/PunchMonsterMixxdPunch.webp", caffeine: 160, sugar: 38, taste: "Beeren-Kirsch-Punsch, tropisch", ratings: [] },
-    { id: 19, name: "Monster Rehab Peach Iced Tea", category: "Rehab (Ohne Kohlensäure)", status: "tested", image: "res/MonsterRehabPeachIcedTea.webp", caffeine: 160, sugar: 11, taste: "Pfirsich-Eistee ohne Kohlensäure, sehr süffig", ratings: [] },
-    { id: 20, name: "Monster Rehab Iced Tea Lemonade", category: "Rehab (Ohne Kohlensäure)", status: "upcoming", image: "res/MonsterRehabIcedTeaLemonade.webp", caffeine: 160, sugar: 10, taste: "Zitronen-Eistee ohne Kohlensäure, erfrischend", ratings: [] },
-    { id: 21, name: "Zero Zucker Ultra Paradise", category: "Ultra (Zero Sugar)", status: "tested", image: "res/ZeroZuckerUltraParadise.webp", caffeine: 150, sugar: 0, taste: "Kiwi, Limette & ein Hauch Gurke, zuckerfrei", ratings: [] },
-    { id: 22, name: "Zero Zucker Ultra Fiesta Mango", category: "Ultra (Zero Sugar)", status: "tested", image: "res/ZeroZuckerUltraFiesta.webp", caffeine: 150, sugar: 0, taste: "Saftige Mango ohne Zucker", ratings: [] },
-    { id: 23, name: "Zero Zucker Ultra Gold", category: "Ultra (Zero Sugar)", status: "upcoming", image: "res/ZeroZuckerUltraGold.webp", caffeine: 150, sugar: 0, taste: "Goldene Ananas, erfrischend, zuckerfrei", ratings: [] },
-    { id: 24, name: "Zero Zucker Ultra Rosa", category: "Ultra (Zero Sugar)", status: "tested", image: "res/ZeroZuckerUltraRosa.webp", caffeine: 150, sugar: 0, taste: "Pinke Limonade, Beeren & florale Note", ratings: [] },
-    { id: 25, name: "Zero Zucker Ultra Watermelon", category: "Ultra (Zero Sugar)", status: "upcoming", image: "res/ZeroZuckerUltraWatermelon.webp", caffeine: 150, sugar: 0, taste: "Kräftige Wassermelone, süß-säuerlich", ratings: [] },
-    { id: 26, name: "Original Zero Zucker (Grün/Blau)", category: "Original", status: "tested", image: "res/OriginalZeroZuckerMonsterEnergy.webp", caffeine: 160, sugar: 0, taste: "Wie das Original Green, aber ohne Zucker", ratings: [] },
-    { id: 27, name: "Zero Sugar Monster Energy", category: "Original", status: "upcoming", image: "res/ZeroSuggarMonsterEnergy.webp", caffeine: 160, sugar: 0, taste: "Klassisches Monster-Profil, zuckerfrei", ratings: [] },
-    { id: 28, name: "Top Speed Zero Sugar (Lewis Hamilton)", category: "Special Edition", status: "tested", image: "res/TopSpeedZeroSugar.webp", caffeine: 160, sugar: 0, taste: "Steinobst, Pfirsich-Nektarine, zuckerfrei", ratings: [] },
-    { id: 29, name: "VR46 The Doctor", category: "Special Edition", status: "tested", image: "res/VR46AlaisDerDoctorMonsterEnergy.webp", caffeine: 160, sugar: 55, taste: "Spritzige Orange & Zitrone (wie Fanta mit Kick)", ratings: [] },
-    { id: 30, name: "VR46 Zero Sugar", category: "Special Edition", status: "upcoming", image: "res/VR46ZeroSugar.webp", caffeine: 160, sugar: 0, taste: "Sonnige Zitrus-Orange ohne Zucker", ratings: [] },
-    { id: 31, name: "Monster Energy Assault", category: "Special Edition", status: "upcoming", image: "res/MonsterEnergyAssault.webp", caffeine: 160, sugar: 55, taste: "Cola-Kirsch-Note, kräftig süß", ratings: [] }
-];
 
 // Hilfsfunktionen für LocalStorage
 function getLocalJson(key, fallback) {
@@ -67,17 +30,9 @@ function setLocalJson(key, value) {
     localStorage.setItem(key, JSON.stringify(value));
 }
 
-// Cloudflare Worker API-URL ermitteln (aus LocalStorage oder data/monsters.json)
+// Cloudflare Worker API-URL (aus data/monsters.json -> meta.apiUrl)
 function getD1ApiUrl() {
-    if (appState.activeApiUrl) return appState.activeApiUrl;
-    const saved = localStorage.getItem(STORAGE_KEYS.D1_API_URL);
-    if (saved && saved.trim()) {
-        return saved.trim().replace(/\/+$/, '');
-    }
-    if (appState.meta && appState.meta.apiUrl && appState.meta.apiUrl.trim()) {
-        return appState.meta.apiUrl.trim().replace(/\/+$/, '');
-    }
-    return '';
+    return ((appState.meta && appState.meta.apiUrl) || '').trim().replace(/\/+$/, '');
 }
 
 // Alle Monster + Bewertungen (Cloudflare D1 oder Basis-JSON + LocalStorage) zusammenführen
@@ -159,9 +114,9 @@ async function loadBaseJson() {
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         const json = await res.json();
         appState.meta = json.meta || appState.meta;
-        appState.baseMonsters = Array.isArray(json.monsters) ? json.monsters : FALLBACK_MONSTERS;
+        appState.baseMonsters = Array.isArray(json.monsters) ? json.monsters : [];
     } catch {
-        appState.baseMonsters = FALLBACK_MONSTERS;
+        appState.baseMonsters = [];
     }
 }
 
@@ -241,59 +196,45 @@ async function syncFromCloudflareD1() {
     const statusDot = document.getElementById('syncStatusDot');
     const feedback = document.getElementById('repoSyncFeedback');
 
-    const saved = (localStorage.getItem(STORAGE_KEYS.D1_API_URL) || '').trim().replace(/\/+$/, '');
-    const fromJson = (appState.meta && appState.meta.apiUrl ? appState.meta.apiUrl : '').trim().replace(/\/+$/, '');
-    const candidates = [...new Set([saved, fromJson].filter(Boolean))];
+    // Früher manuell eingetragene URL aufräumen (wird nicht mehr verwendet)
+    localStorage.removeItem('monsterList_d1ApiUrl_v1');
+    const apiUrl = getD1ApiUrl();
 
-    if (!candidates.length) {
+    if (!apiUrl) {
         appState.d1Connected = false;
-        appState.activeApiUrl = '';
-        statusText.textContent = 'D1 verbinden';
+        statusText.textContent = 'D1 nicht konfiguriert';
         if (statusDot) statusDot.style.background = '#ffb703';
         if (feedback) {
-            feedback.textContent = 'Noch keine Cloudflare Worker URL hinterlegt. Folge der kurzen Anleitung in README.md!';
+            feedback.textContent = 'In data/monsters.json ist keine apiUrl hinterlegt. Den Deploy-Workflow ausführen!';
         }
         return;
     }
 
-    let lastError = null;
-    for (const apiUrl of candidates) {
-        try {
-            let data = await fetchD1Data(apiUrl);
+    try {
+        let data = await fetchD1Data(apiUrl);
 
-            // Falsche/alte gespeicherte URL entfernen, wenn die URL aus monsters.json funktioniert
-            if (saved && apiUrl !== saved) {
-                localStorage.removeItem(STORAGE_KEYS.D1_API_URL);
-            }
-            appState.activeApiUrl = apiUrl;
-
-            const uploaded = await uploadLocalChanges(apiUrl);
-            if (uploaded > 0) {
-                data = await fetchD1Data(apiUrl);
-                showToast(`☁️ ${uploaded} lokal gespeicherte Änderung(en) nach D1 hochgeladen.`);
-            }
-
-            if (Array.isArray(data.monsters) && data.monsters.length > 0) {
-                appState.baseMonsters = data.monsters;
-            }
-            appState.d1Connected = true;
-            statusText.textContent = 'D1 Live aktiv';
-            if (statusDot) statusDot.style.background = '#00ff41';
-            if (feedback) {
-                feedback.textContent = `✅ Verbunden mit Cloudflare D1 (${appState.baseMonsters.length} Monster geladen).`;
-            }
-            return;
-        } catch (err) {
-            lastError = { apiUrl, err };
+        const uploaded = await uploadLocalChanges(apiUrl);
+        if (uploaded > 0) {
+            data = await fetchD1Data(apiUrl);
+            showToast(`☁️ ${uploaded} lokal gespeicherte Änderung(en) nach D1 hochgeladen.`);
         }
-    }
 
-    appState.d1Connected = false;
-    appState.activeApiUrl = '';
-    statusText.textContent = 'D1 Fehler';
-    if (statusDot) statusDot.style.background = '#ff4d4d';
-    if (feedback && lastError) {
-        feedback.textContent = `❌ Verbindung zu "${lastError.apiUrl}" fehlgeschlagen: ${lastError.err.message}`;
+        if (Array.isArray(data.monsters) && data.monsters.length > 0) {
+            appState.baseMonsters = data.monsters;
+        }
+        appState.d1Connected = true;
+        statusText.textContent = 'D1 Live aktiv';
+        if (statusDot) statusDot.style.background = '#00ff41';
+        if (feedback) {
+            feedback.textContent = `✅ Verbunden mit Cloudflare D1 (${appState.baseMonsters.length} Monster geladen).`;
+        }
+    } catch (err) {
+        appState.d1Connected = false;
+        statusText.textContent = 'D1 Fehler';
+        if (statusDot) statusDot.style.background = '#ff4d4d';
+        if (feedback) {
+            feedback.textContent = `❌ Verbindung zu "${apiUrl}" fehlgeschlagen: ${err.message}`;
+        }
     }
 }
 
@@ -894,7 +835,6 @@ function bindEvents() {
     });
 
     document.getElementById('openSyncModalBtn').addEventListener('click', () => {
-        document.getElementById('d1ApiUrlInput').value = getD1ApiUrl();
         updateJsonExportPreview();
         document.getElementById('syncModal').classList.remove('hidden');
     });
@@ -912,13 +852,11 @@ function bindEvents() {
         });
     });
 
-    // Cloudflare D1 Worker URL speichern & testen
+    // Verbindung zu Cloudflare D1 erneut prüfen
     document.getElementById('saveApiUrlBtn').addEventListener('click', async () => {
-        const val = document.getElementById('d1ApiUrlInput').value.trim().replace(/\/+$/, '');
-        localStorage.setItem(STORAGE_KEYS.D1_API_URL, val);
         await syncFromCloudflareD1();
         refreshUI();
-        showToast(appState.d1Connected ? '✅ Mit Cloudflare D1 verbunden!' : 'URL gespeichert.');
+        showToast(appState.d1Connected ? '✅ Mit Cloudflare D1 verbunden!' : '❌ Keine Verbindung zu Cloudflare D1.');
     });
 
     // JSON herunterladen

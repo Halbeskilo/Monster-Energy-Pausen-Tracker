@@ -129,15 +129,6 @@ body {
     border-color: var(--monster-green);
 }
 
-.btn-github {
-    background: #238636;
-    color: #fff;
-}
-
-.btn-github:hover {
-    background: #2ea043;
-}
-
 .btn-danger {
     background: rgba(255, 77, 77, 0.15);
     color: #ff8080;
@@ -267,7 +258,6 @@ body {
 .stack-form select,
 .rating-form-box input,
 .rating-form-box textarea,
-.repo-input-row input,
 #modalStatusSelect {
     width: 100%;
     padding: 10px 13px;
@@ -862,10 +852,6 @@ body {
     gap: 10px;
     margin: 10px 0;
     flex-wrap: wrap;
-}
-
-.repo-input-row input {
-    flex: 1;
 }
 
 .json-preview {
